@@ -76,7 +76,7 @@ we also have $M' = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$, and thus every 
 for disjoint $C, D \subseteq E$. 
 
 Partly because matroid theorists are induction-loving combinatorialists, it is very common to contract and delete single elements.
-To this end, we abbreviate $M / con {e}$ by $M / e$, and do the same for deletion. 
+To this end, we abbreviate $M / {e}$ by $M / e$, and do the same for deletion. 
 It's also partly for this reason that it's so common to think about deletion rather than
 the equivalent notion of the 'restriction of $M$ to $R$' defined by $M | R = M \setminus (E \setminus R)$. 
 We are removing a screw from the engine, rather than considering the set of everything in the engine that's not the screw. 
@@ -216,6 +216,9 @@ or just as reasonably with a function whose domain is the subtype `↑E`. Simila
 for codomain. So `Matroid/Matroid/Map` ends up definining at least four ways to move matroids
 between types, all with the same nearly trivial mathematical content, differing only in whether (co)domains are
 types or subtypes. Whenever functions are involved, the embedded ground set will rear its ugly head in this kind of way.
+(Another example is the recent mathlib definition of a function `Matroid.closure : Set α -> Set α` which
+needs to be defined in a way that handles junk elements; there are two potential ways to do this,
+and both come with drawbacks). 
 
 The first tradeoff certainly isn't ideal. Using automation to discharge trivial goals is easy enough
 (and will improve as things like `aesop` grow more powerful), but what is also annoying
@@ -229,8 +232,9 @@ If we were working with an objects in the algebraic heirarchy rather than a matr
 this would be a deal-breaker. You can't have algebra without structure-preserving maps.
 
 I think though, that in a similar way, you can't have combinatorics without set theory.
-It's for this reason that I'm willing to put up with maps being awkward. Maps will crop
-up in a text on matroids, but somewhere in the middle. They aren't fundamental to the subject. 
+It's for this reason that I'm willing to put up with maps being awkward. Functions between matroids
+will crop up in a text on matroids, but somewhere in the middle. 
+They aren't fundamental to the subject. 
 What is fundamental is the fact that two minors obtained in different ways are still objects 
 of exactly the same type, and have ground sets and independence predicates that can be seamlessly
 manipulated and compared without composing with 'invisible' functions. 
@@ -239,10 +243,32 @@ manipulated and compared without composing with 'invisible' functions.
 since they usually take the form of set images and preimages rather than just function application).
 
 What I really hope, though, is to have my cake and eat it too. I hope that there is a better design that allows
-the ground set of a matroid to be ambient and boundaryless, and at the same time allows related objects
-to be manipulated without invisible functions blowing up every term. 
+the ground set of a matroid to be ambient and boundaryless, and at the same time allows pairs of different matroids
+to be manipulated without coercions and images functions blowing up every term. 
 
 ## Graph Theory
+
+If I have a graph $G = (V,E)$ and an edge $e \in E$, I can identify the endpoints of $e$ in $G$ to get
+a new graph $H = G / e$. This is called 'contracting' the edge. 
+
+This definition is intuitively clear enough if one thinks of a graph topologically, 
+but is fraught from a formal perspective. Can a graph have loops at a vertex or multiple 'parallel' edges between a pair of vertices?
+What happens if $e$ is a loop? Exactly what type of object is the identified vertex?
+If the two ends of $e$ have edges $f,f'$ to a common neighbour $x$, does $f, f'$ become a parallel pair of edges?
+
+These questions have multiple valid answers that give different formalisms.
+Suppose that we settle on allowing $G$ to be a 'multigraph', possibly having loops and parallel edges. 
+A graph obtained from a subgraph of $G$ via a sequence of edge-contractions is a 'minor' of $G$.
+(The common terminology with matroid minors is not a coincidence; the connection between them can be made precise 
+via a standard construction that produces a matroid from a graph.)
+The minor order on graphs has been extensively studied for over a century. 
+A seminal [result due to Wagner/Kuratowksi](https://en.wikipedia.org/wiki/Wagner%27s_theorem) characterizes which graphs
+can be drawn in the plane in terms of two particular forbidden minors,
+and [Robertson and Seymour's graph minors structure theorem](https://en.wikipedia.org/wiki/Graph_structure_theorem)
+is widely viewed as the deepest and most influential theorem in graph theory. 
+
+Minors, and indeed non-simple graphs, are nowhere to be seen in mathlib.
+
 
 
 
