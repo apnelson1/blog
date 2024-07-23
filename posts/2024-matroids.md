@@ -44,7 +44,8 @@ give rise to a matroid on $E$. Such 'representable' or ('linear') matroids are w
 a nice slogan is that the definition of a matroid abstracts the intuitive notion of independence just as a group abstracts the intuitive notion of symmetry. 
 Even though most matroids aren't linear, in practice, thinking of a matroid as simply a set of vectors gives very good intuition. 
 
-Matroids have close links to graph theory, and have been studied by combinatorialists for years for their ability to both generalize
+Matroids have close links to graph theory (the $E$ notation even comes from the standard notation for the edge set of a graph), 
+and have been studied by combinatorialists for years for their ability to both generalize
 and give insight into theorems about graphs, especially with the minor order. More recently, matroids have seen a rise to prominence
 in algebraic geometry, and were fundamental to the work cited for [June Huh's fields medal](https://www.mathunion.org/fileadmin/IMU/Prizes/Fields/2022/IMU_Fields22_Huh_citation.pdf).
 
@@ -70,9 +71,15 @@ The important thing is that contraction and deletion are two different ways to r
 A matroid obtained from $M$ by some combination of contraction and deletions is called a *minor* of $M$.
 So if $C_1, C_2, D_1, D_2$ are pairwise-disjoint subsets of $E$, 
 then $M' = (((M / C_1) \setminus D_1) / C_2) \setminus D_2$ is an example of a minor of $M$.
-But we don't need all the brackets; it turns out that contraction/deletion commute in the sense that
+But we don't need all the parentheses; it turns out that contraction/deletion commute in the sense that
 we also have $M' = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$, and thus every minor has the form $M / C \setminus D$
 for disjoint $C, D \subseteq E$. 
+
+Partly because matroid theorists are induction-loving combinatorialists, it is very common to contract and delete single elements.
+To this end, we abbreviate $M / con {e}$ by $M / e$, and do the same for deletion. 
+It's also partly for this reason that it's so common to think about deletion rather than
+the equivalent notion of the 'restriction of $M$ to $R$' defined by $M | R = M \setminus (E \setminus R)$. 
+We are removing a screw from the engine, rather than considering the set of everything in the engine that's not the screw. 
 
 There are two important points here from a formalization perspective. The first is that,
 if $N = (E', \mathcal{I}')$ is a minor of $M = (E, \mathcal{I})$, then $N$ is not determined by
@@ -84,14 +91,86 @@ is a perfect example of a statement that is hard to formalize. In a type theory 
 
 **Closure** 
 
-We need one more thing, mathematically. If $M = (E, \mathcal{I})$ is a matroid and $I \in \mathcal{I}$,
-then the *closure* of $I$ in $M$ is the set $\mathrm{cl}_M(I)$ of all $e \in E$ such that either $e \in I$ or $I \cup \{e\} \notin \mathcal{I}$.
-If the matroid is linear, then $\mathrm{cl}_M(I)$ is simply the intersection of $E$ with the linear span of $I$.
-In this spirit, we can define $\mathrm{cl}_M(X)$ even in $X \not\subseteq I$, but I omit the definition here.
+We need one more thing. If $M = (E, \mathcal{I})$ is a matroid and $I \in \mathcal{I}$,
+then the *closure* of $I$ in $M$ is the set $\mathrm{cl}(I)$ of all $e \in E$ such that either $e \in I$ or $I \cup \{e\} \notin \mathcal{I}$.
+If the matroid is linear, then $\mathrm{cl}(I)$ is simply the intersection of $E$ with the linear span of $I$.
+In this spirit, we can define $\mathrm{cl}(X)$ even in $X \not\subseteq I$, but I omit the definition here.
 
-Closure lives up to its name in that it is idempotent, inflationary and monotone; 
-that is, we have $\mathrm{cl}_M(\mathrm{cl}_M(X)) = $\mathrm{cl}_M(X)$ and 
-$X \subseteq \mathrm{cl}_M(X) \subseteq \mathrm{cl}_M(Y)$ for all $X \subseteq Y \subseteq E$.
+Closure is a sensibly named function in that it is idempotent, inflationary and monotone; 
+that is, we have $\mathrm{cl}(\mathrm{cl}(X)) = \mathrm{cl}(X)$ and 
+$X \subseteq \mathrm{cl}(X) \subseteq \mathrm{cl}(Y)$ for all $X \subseteq Y \subseteq E$.
+
+##A minor problem
+
+It is clear enough how one can crib from existing mathlib designs to come up with an idiomatic definition of `Matroid` in lean, 
+as follows (again, don't worry about the finiteness thing): 
+
+```
+structure Matroid (E : Type*) where
+  Indep : Set E → Prop
+  indep_mono : ∀ I J, Indep J → I ⊆ J → Indep I
+  [...],
+```
+
+where the remainder of fields are also propositional.
+
+For a lot of things, this worked great. Back in the lean 3 days, I used something like this as my definition, and got fairly far.
+But there was a sticking point: it was very difficult to work with minors. If `M : Matroid E` and `X : Set E`,
+it is easy enough to define `M.delete X : Matroid (Xᶜ)` and `M.contract X : Matroid Xᶜ`, but this isn't the point. 
+
+Think about a simple statement like $(M \setminus D) / C = (M / C) \setminus D$.
+This is easy to prove with set theory, but type-theoretically, it's very hard to even state in terms of the definition above in a way that typechecks;
+the LHS has type `Matroid E₁` for a certain subtype `E₁` of `Dᶜ`, and the RHS has type `Matroid E₂` for a subtype `E₂` of `Cᶜ`.
+There is of course a canonical isomorphism between thes types, but this is cold comfort if we want to
+state and formalize $(((M / C_1) \setminus D_1) / C_2) \setminus D_2 = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$ instead. 
+That last equality is not contrived, either; it's literally the content of the crucial statement 
+'we never care about the order of deletions and contractions', which anyone doing research in matroid theory has internalized. 
+I feel fairly strongly that no workable formalization of matroids can settle for anything less than `Eq` for that $=$, either. 
+An isomorphism or `heq`-like notion would make big parts of mathlib inaccessible to anyone working with minors of matroids.
+
+To solve this issue, the next port of call in standard mathlib design is the `Submodule`/`Subgraph`-pattern. For `M : Matroid E`, we would define 
+
+```
+structure Matroid.Minor {E : Type} (M : Matroid E) where
+  carrier : Set E
+  contractSet : Set E
+  deleteSet : Set E
+  [..]
+```
+
+where the rest is propositional; for instance, it would be enough to assert that `contractSet`, `deleteSet` and `carrier` form a partition of `univ`. 
+There would be an accompanying function `minor.toMatroid (M : Matroid E) (N : M.Minor) : Matroid ↑(N.carrier)` with all the API. 
+We can't use `toMatroid` to formalize the statement of $(M \setminus D) / C = (M / C) \setminus D$ with equality, because things still wouldn't typecheck.
+But we can do something if we define `Matroid.Minor.contract {M : Matroid E} (N : M.Minor) (C : Set E) : M.Minor` and `Matroid.Minor.delete` analogously. 
+Then the statement `Minor.contract (Matroid.delete M D) C = Minor.delete (Matroid.contract M C) D` typechecks just fine, 
+with both sides having type `Matroid.Minor M`. It's also easy enough to prove, though we probably need disjointness assumptions.
+
+So we can use `rw` to change `(M / C) \ D` to `(M \ D) / C`. That's great! 
+Once I had this working, I was gung ho about proving theorems about minors. 
+And that opens lots of doors - probably well over half the literature on matroids uses the theory of minors, and now it was available to formalize. 
+My repo had a subfolder `Minor` which grew fast. In fact, it turned out for many purposes, it was more important to have a theorem formalized
+as a statement about `N : Minor M` for some fixed `M` that in was to have a theorem about `M : Matroid E` itself.
+Statements were usually just as nice, and proofs went much more smoothly. 
+The common idiom 'contract an element, and apply the induction hypothesis to the resulting minor' became straightforward,
+rather than a matter of wrestling with `Fintype.card`. 
+It became slowly apparent that the `Matroid.Minor` namespace was the natural home for so many proofs, that I started neglecting the original namespace. 
+It was easy enough to go between statements in one world and statements in the other, 
+but it was duplication that doubled the size of the API - why do this? 
+
+The salient point, which was creeping up on me crystallized in a conversation in Banff I had last year with Johan Commelin.
+When I asked him for advice on the matter, his question was why `Matroid` existed in the first place, rather than just `Minor`.
+I realized I didn't have a good answer. 
+
+## The solution
+
+Taking the above process to its logical conclusion, one asks what you get if you do everything only for `Minor`.
+And it becomes clear that the 'host' matroid `M` in `Minor M` isn't what's important. What is important is that
+you can contract and delete elements and stay in the same type, and that you can do set theory with ground sets. 
+(I haven't really touched on this, but it's not at all unusual in real-world proofs to make statements like 
+$E_N \cup {f} \subseteq E_M \setminus X$ for matroids $M$ and $N$; this becomes disastrous to formalize quickly if
+the ground sets of $M$ and $N$ are types, but is easy if they are common minors of some larger matroid). 
+
+All you need for this is that a `
 
 
 
@@ -99,7 +178,14 @@ $X \subseteq \mathrm{cl}_M(X) \subseteq \mathrm{cl}_M(Y)$ for all $X \subseteq Y
 
 
 
-**Matroid Design**
+
+
+
+
+
+
+
+
 
 In formalizing matroids, one's first instinct is probably to define a matroid as a structure (or class) `Matroid α` consisting of a predicate `Indep : Set α → Prop`, with appropriate rules constraining the behaviour of `Indep`. This mimics the design of objects in the algebraic hierarchy. Doing this would make `Matroid.closure` an example of a `ClosureOperator (Set α)`, and give access to a lot of nice API for these objects, such as Galois insertions. 
 
