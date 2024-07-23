@@ -89,18 +89,7 @@ and those operations would give different $N$. This makes the notion of a minor 
 The second is that the aforementioned fact that $(((M / C_1) \setminus D_1) / C_2) \setminus D_2 = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$ 
 is a perfect example of a statement that is hard to formalize. In a type theory framework, we will pay dearly for that $=$ sign. 
 
-**Closure** 
-
-We need one more thing. If $M = (E, \mathcal{I})$ is a matroid and $I \in \mathcal{I}$,
-then the *closure* of $I$ in $M$ is the set $\mathrm{cl}(I)$ of all $e \in E$ such that either $e \in I$ or $I \cup \{e\} \notin \mathcal{I}$.
-If the matroid is linear, then $\mathrm{cl}(I)$ is simply the intersection of $E$ with the linear span of $I$.
-In this spirit, we can define $\mathrm{cl}(X)$ even in $X \not\subseteq I$, but I omit the definition here.
-
-Closure is a sensibly named function in that it is idempotent, inflationary and monotone; 
-that is, we have $\mathrm{cl}(\mathrm{cl}(X)) = \mathrm{cl}(X)$ and 
-$X \subseteq \mathrm{cl}(X) \subseteq \mathrm{cl}(Y)$ for all $X \subseteq Y \subseteq E$.
-
-##A minor problem
+## A minor problem
 
 It is clear enough how one can crib from existing mathlib designs to come up with an idiomatic definition of `Matroid` in lean, 
 as follows (again, don't worry about the finiteness thing): 
@@ -139,7 +128,10 @@ structure Matroid.Minor {E : Type} (M : Matroid E) where
 ```
 
 where the rest is propositional; for instance, it would be enough to assert that `contractSet`, `deleteSet` and `carrier` form a partition of `univ`. 
-There would be an accompanying function `minor.toMatroid (M : Matroid E) (N : M.Minor) : Matroid ↑(N.carrier)` with all the API. 
+The fact that minors are themselves matroids would be encoded via a function `minor.toMatroid (M : Matroid E) (N : M.Minor) : Matroid ↑(N.carrier)` 
+with all the API linking the two, such as a predicate `Minor.Indep {M : Matroid E} (N : M.Minor) : Set E → Prop` such that `Matroid.Indep` 
+and `Minor.Indep` have the right mathematical relationship. 
+
 We can't use `toMatroid` to formalize the statement of $(M \setminus D) / C = (M / C) \setminus D$ with equality, because things still wouldn't typecheck.
 But we can do something if we define `Matroid.Minor.contract {M : Matroid E} (N : M.Minor) (C : Set E) : M.Minor` and `Matroid.Minor.delete` analogously. 
 Then the statement `Minor.contract (Matroid.delete M D) C = Minor.delete (Matroid.contract M C) D` typechecks just fine, 
@@ -161,16 +153,96 @@ The salient point, which was creeping up on me crystallized in a conversation in
 When I asked him for advice on the matter, his question was why `Matroid` existed in the first place, rather than just `Minor`.
 I realized I didn't have a good answer. 
 
-## The solution
+## Embedded ground sets
 
 Taking the above process to its logical conclusion, one asks what you get if you do everything only for `Minor`.
-And it becomes clear that the 'host' matroid `M` in `Minor M` isn't what's important. What is important is that
+And it becomes clear that the 'host' matroid `M` in `Minor M` isn't what's important. What makes `Minor` nice is that 
 you can contract and delete elements and stay in the same type, and that you can do set theory with ground sets. 
 (I haven't really touched on this, but it's not at all unusual in real-world proofs to make statements like 
-$E_N \cup {f} \subseteq E_M \setminus X$ for matroids $M$ and $N$; this becomes disastrous to formalize quickly if
+$E_N \cup {f} \subseteq E_M \setminus X$ for matroids $M$ and $N$; this becomes horrible to formalize quickly if
 the ground sets of $M$ and $N$ are types, but is easy if they are common minors of some larger matroid). 
 
-All you need for this is that a `
+What you need for these two things is that you have a `carrier`-like field, and contract/delete operations
+whose domain and codomain are the same. This suggests the following definition, which is a simplified version
+of what appears in mathlib. 
+
+```
+structure (α : Type) : Matroid α where
+  carrier : Set α
+  Indep : Set α → Prop
+  [..]
+  support : ∀ I, Indep I → I ⊆ carrier
+```
+
+again, the `[..]` hides propositional/mathematical stuff that makes `Indep` actually encode a matroid.
+Then `Matroid.contract (M : Matroid α) (C : Set α) : Matroid α` makes perfect sense to define, and 
+`(M.contract C).delete D = (M.delete D).contract C` typechecks and proves just fine, with no `Minor`-like type involved.
+
+In fact, this is much more versatile than the `Minor` type. It allows two distinct matroids to be manipulated
+as peers, even if they aren't common minors of such larger matroid. This is a less common use case, but it does occur.
+The title of this section - 'embedded ground sets', refers to this particular design pattern, where the ground set
+of a matroid is formalized as a carrier set embedded within a type, rather than a type itself. 
+
+The `support` axiom is to ensure that all the fun in the matroid is happening *within* the ground set;
+there are no junk independent sets containing nonelements of the matroid. 
+
+As a side note, it might seem plausible that the `carrier` field is unneccessary and can be reconstructed
+just from the information in `Indep`, but sadly this isn't the case.
+Matroids can have elements that are in no independent set: 
+these elements, called 'loops', have mathematical significance as a part of the matroid,
+and cannot be safely ignored. 
+
+**Tradeoffs**
+
+The embedded ground set pattern isn't all wine and roses. The way I see it, there are two main tradeoffs : 
+
+First, we suddenly have to care in many theorem hypotheses about whether a set is actually supported.
+In practice, hypotheses of the form `X ⊆ M.carrier` are by far the most common in my repo, 
+and are always there because dropping them allows for trivial counterexamples.
+Of course, proving that `X ⊆ M.carrier` is often very easy. For instance, if `M.Indep X` holds,
+then `support` implies `X ⊆ M.carrier`. In fact, we have an `aesop_mat` tactic whose only
+job is to prove goals of the form `X ⊆ M.carrier` in an `autoparam`. For instance, if 
+`M.Indep X` and `M.Indep Y`, then `aesop_mat` will be able to prove that `M.Indep (X ∪ Y)`.
+I see this as being conceptually similar to `positivity`/`continuity`. 
+
+Second, in some places we lose seamless compatibility with the utopia of type theory and functional
+programming. One place things get a little ugly is in the API for 
+[maps between matroids](https://leanprover-community.github.io/mathlib4_docs/Mathlib/Data/Matroid/Map.html#Matroid.map). 
+Mathematically, this is all the standard boilerplate you see everywhere, and the details aren't so important: 
+if I have a matroid on one type, I can move it to another type using an injective function. 
+But now I have to throw set theory into the mix. If I have a matroid `M` with carrier set `E : Set α`,
+then I could reasonably ask to transfer `M` to another type using a function `f` with domain `α`,
+or just as reasonably with a function whose domain is the subtype `↑E`. Similar things go
+for codomain. So `Matroid/Matroid/Map` ends up definining at least four ways to move matroids
+between types, all with the same nearly trivial mathematical content, differing only in whether (co)domains are
+types or subtypes. Whenever functions are involved, the embedded ground set will rear its ugly head in this kind of way.
+
+The first tradeoff certainly isn't ideal. Using automation to discharge trivial goals is easy enough
+(and will improve as things like `aesop` grow more powerful), but what is also annoying
+is giving any nonzero thought to whether 'non-junk' assumptions are actually needed for a given theorem, 
+and writing proofs in a way that handle junk elements as invisibly as possible. My working intuition for
+matroids serves me reasonably well here, but I'd rather it weren't neccessary. 
+
+There isn't much of a silver lining with this second tradeoff - it is a genuine difficulty,
+and I don't think there is much that can be done with the current design. 
+If we were working with an objects in the algebraic heirarchy rather than a matroid,
+this would be a deal-breaker. You can't have algebra without structure-preserving maps.
+
+I think though, that in a similar way, you can't have combinatorics without set theory.
+It's for this reason that I'm willing to put up with maps being awkward. Maps will crop
+up in a text on matroids, but somewhere in the middle. They aren't fundamental to the subject. 
+What is fundamental is the fact that two minors obtained in different ways are still objects 
+of exactly the same type, and have ground sets and independence predicates that can be seamlessly
+manipulated and compared without composing with 'invisible' functions. 
+
+(Said invisible functions, such as subtype coercion, are especially bad to handle for matroid theory,
+since they usually take the form of set images and preimages rather than just function application).
+
+What I really hope, though, is to have my cake and eat it too. I hope that there is a better design that allows
+the ground set of a matroid to be ambient and boundaryless, and at the same time allows related objects
+to be manipulated without invisible functions blowing up every term. 
+
+## Graph Theory
 
 
 
@@ -181,58 +253,3 @@ All you need for this is that a `
 
 
 
-
-
-
-
-
-
-In formalizing matroids, one's first instinct is probably to define a matroid as a structure (or class) `Matroid α` consisting of a predicate `Indep : Set α → Prop`, with appropriate rules constraining the behaviour of `Indep`. This mimics the design of objects in the algebraic hierarchy. Doing this would make `Matroid.closure` an example of a `ClosureOperator (Set α)`, and give access to a lot of nice API for these objects, such as Galois insertions. 
-
-Unfortunately, this design has huge drawbacks to do with the way matroids are used. Unlike algebraic objects, the ground set $$E$$ of a matroid is really treated like a set. A matroid on a set $$E$$ gives rise to many related matroids (minors) on subsets of $$E$$ in different and nonisomorphic ways, and it is not unusual to consider multiple matroids on the same set $$E$$, or to make assertions about, say, the interection of the ground sets of two different matroids.  Modelling the ground set of a matroid with a type (let alone using typeclasses) is a complete non-starter for this - even very basic theorems about minors of matroids having statements that include an `=` sign become horrible piles of canonical isomorphisms, which are paralyzing in practice. 
-
-I know this because I tried doing things this way for a long time, before @**Johan Commelin** suggested the current design to me. It works as follows: For `α : Type*`,  a `Matroid α` consists of a set `E : Set α`, and a predicate `Indep : Set α → Prop`, satisfying certain axioms that define a matroid, together with an extra rule `h_support : `∀ I, Indep I → I ⊆ E`. In other words, the ground set of a matroid is not a type, but a set within a type, and the independence predicate is defined on all sets in the type, and happens to only hold for subsets of `E`. 
-
-This may seem unwieldy. The real disadvantage is that it sometimes requires unmathematical bookkeeping to make sure that sets are contained in the ground set. The hypothesis `X ⊆ M.E` appears all over the API, where it would have been simply true by definition if the ground set were a type. The advantage is that it allows meaningful assertions that two matroids are `Eq`. 
-
-It's not that the disadvantage isn't bad (it is certainly quite annoying to constantly have to care about sets being 'supported'), but it's that one can't do basic matroid theory in any other way that I know. The 1000 or so lines of API in [the basic file on minors in my matroid repo](https://github.com/apnelson1/Matroid/blob/main/Matroid/Minor/Basic.lean) would be complete DTT hell if ground sets were types, and it's only the very beginning of the theory. Typical proofs involve multiple `rw`s involving lemmas like the following : 
-``
-  lemma contract_cl_eq_contract_delete (M : Matroid α) (C : Set α) :
-    M ／ M.cl C = M ／ C ＼ (M.cl C \ C)`M ／ M.cl C = M ／ C ＼ (M.cl C \ C)
-``
-If that `=` isn't really formalized as `Eq`, such proofs become effectively impossible. 
-
-So as far as I know, there is no other option than to suck it up, to keep track of sets being contained in the ground set, and to devote mental energy to the junk elements outside the ground set when stating lemmas. One thing that helps is the tactic `aesop_mat`, which works pretty well to automatically discharge goals of the form `X ⊆ M.E` when this follows from things in the context. 
-
-**Closure**
-
-There are many other natural predicates on sets in a matroid; a set $$X \subseteq E$$ may be a 'circuit', 'base', 'basis', 'flat', 'cocircuit', ... of $$M$$, and mostly they follow a similar design to `Indep`. For instance, we have a predicate `Base : Set α → Prop` which is defined in such a way that `Base B → B ⊆ M.E` is a theorem; bases of a matroid only exist as subsets of its ground set. Formalizing closure is different, though. Since `cl : 2^E \to 2^E`, we need to formalize it s `Matroid.closure : Set α → Set α`, so we are forced to say where the junk goes. That is, if `X` is not a subset of `M.E`, then how should `M.closure X` be defined? 
-
-There are quite a few potential choices. For instance, we could declare that `M.closure X = ∅` whenever `X` isn't a subset of `M.E`. This choice would be bad, though, since it necessitates adding a lot of support assumption to theorems about closure; we would need to know that `Y ⊆ M.E` for `X ⊆ Y` to imply `M.closure X ⊆ M.closure Y`, so `M.closure` would fail to be monotone. 
-
-After discarding the chaff like the above, there are two reasonable choices that remain. Suppose that `M.closure X` has been defined as the mathematics dictates for every subset `X` of `M.E`.  When `X` is not a subset of `M.E`, we can either
-
-(1) : Define `M.closure X` so that `M.closure X = M.closure (X ∩ M.E)`, or 
-(2) : Define `M.closure X = M.closure (X ∩ M.E) ∪ X`. 
-
-And this choice is why I'm making this post. Originally my repo used (1), and the PR initially did. But Johan suggested (2) for the PR, giving some quite good arguments for it. 
-I gave it some thought, and it's a hard choice! Both (1) and (2) are good and bad for different reasons, and it felt very annoying to be forced to settle on one or the other. 
-I'll summarize the points here. 
-
-(1) is nice for two reasons. First, it guarantees that `M.closure X ⊆ M.E` for all `X`, even when `X` contains junk outside the ground set. This is great for `aesop_mat`; in general knowing that things are contained in the ground set is very useful, since it's needed so often as an assumption. The second reason is that when proving something about `M.closure X` with no assumptions on `X`, one can quickly `rw` the term to `M.closure (X ∩ M.E)`, and obtain a statement that is only about subsets of ground set (i.e. sets which are mathematically meaningful in the context of this matroid). This reduces cognitive load; thinking about junk elements is unmathematical and annoying. 
-
-(2) is nice for reasons that probably appear more attractive. The statement that `M.closure X ⊆ M.E` is no longer unconditionally true (it needs `X ⊆ M.E`), but the statement that `X ⊆ M.closure X` *is* unconditionally true. This turns out to imply that `Matroid.closure` is actually an example of docs#ClosureOperator. This opens up access to a lot of nice API, giving a `GaloisInsertion`, for example. A side benefit is that a function satisfying (2) is actually the closure function of a different matroid with ground set `univ`, which can simplify proofs in a few places. 
-
-So I made a branch of my repo, and refactored the whole thing so that `closure` was defined as `ClosureOperator`, satisfying (2). This affected countless lemmas across dozens of files, and it was a few days work adding/removing 'non-junk' assumptions before I had (2) working almost everywhere.
-
-It was a close thing, but the slightly less mathematically principled and more hacky solution won out: I decided that (1) was better. The nice API was tempting, reduced duplication a little and was in some places useful, but having access to `M.closure X ⊆ M.E` and being able to easily `rw` away junk elements was too much to give up. A common idiom with (2) was having a term `M.closure X` with no assumptions on `X`, then rewriting it to `M.closure (X ∩ M.E) ∪ (X \ M.E)` to separate the non-junk and junk parts of the term. But this expression still contains the unmathematical junk `X \ M.E`; any time and keystrokes spent dealing with those elements is a waste and arguably a failure of the design. And of course the term `M.closure (X ∩ M.E) ∪ (X \ M.E)` itself is horrible, especially if `X` itself is a complicated expression. Losing the API was difficult, but in fact it was still available in a different guise. With (1), we do still get a `ClosureOperator` on the subtype `{X // X ⊆ M.E}`, through which the API lemmas can be (a little clunkily) transferred from the subtype to the type. 
-
-**Conclusion** 
-
-I don't know what the lesson is here, but it is clear that the 'embedded ground set' design was consequential. It forced me to decide between (1) and (2), and it would have been really nice to have the advantages of both. If the ground set were a type, we could have had both (1) and (2), but we would then be unable to assert that two different-looking matroids are `Eq`, which is central enough to the combinatorial theory that it is a deal-breaker. 
-
-This isn't the only time that embedded ground sets have caused me pain. Whenever functions in and out of matroids crop up, they make things a little more difficult. The material in Docs#Data.Matroid.Map is forced to consider many different flavours of maps between matroids involving subtypes of subsets, and this is because ground sets are not types. When formalizing the heavily studied subject of linear representations of a matroid, you need to consider functions `f : M.E → W` for a vector space `W`; this would be much easier if the domain were a plain type rather than a coerced set. 
-
-But none of this pain is as bad as the alternative: being unable to consider different matroids on related ground sets as terms in a common type.
-
-So going forward, I'm putting up with the pain, using subtypes once functions get involved, and using automation tactics like `aesop_mat` with autoparams to minimize manually keeping track of `X ⊆ M.E` proofs. (by the way, I hacked `aesop_mat` together a year ago and it's doing something quite simple not particularly quickly; anyone that knows how to speed up specialized `aesop`-like tactics that would be willing to have a look with me would have my gratitude!) Maybe there is a good design I'm unaware of that would make my life much easier, and maybe HOTT has something to offer. But in the meantime I think this is what matroid theory looks like in lean.  
