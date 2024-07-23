@@ -31,7 +31,7 @@ where $E$ is a finite set, and $\mathcal{I}$ is a collection of subsets of $E$ c
 
 (1) $\varnothing \in \mathcal{I}$.
 
-(2) If $J \subseteq I$ and $I \in \mathcal{I}$, then $J \in ]mathcal{I}$.
+(2) If $J \subseteq I$ and $I \in \mathcal{I}$, then $J \in \mathcal{I}$.
 
 (3) If $I,J \in \mathcal{I}$ and $|I| < |J|$, then there exists $e \in J \setminus I$ for which $I \cup \{e\} \in \mathcal{I}$. 
 
@@ -40,10 +40,62 @@ in a way that keeps it independent.
 
 The terminology 'independent' immediately suggests a model of these axioms. If $E$ is a set of vectors in a vector space $V$,
 then declaring the 'independent' subsets of $E$ to be the precisely the linearly independent sets can be readily checked to 
-give rise to a matroid on $E$. Such 'representable' or ('linear') matroids are what Whitney had in mind when first defining these objects.
-A nice slogan is that the definition of a matroid abstracts the intuitive notion of independence just as a group abstracts the intuitive notion of symmetry. 
+give rise to a matroid on $E$. Such 'representable' or ('linear') matroids are what Whitney had in mind when first defining these objects in the 1930's:
+a nice slogan is that the definition of a matroid abstracts the intuitive notion of independence just as a group abstracts the intuitive notion of symmetry. 
+Even though most matroids aren't linear, in practice, thinking of a matroid as simply a set of vectors gives very good intuition. 
 
-Matroids have close links to graph theory, and 
+Matroids have close links to graph theory, and have been studied by combinatorialists for years for their ability to both generalize
+and give insight into theorems about graphs, especially with the minor order. More recently, matroids have seen a rise to prominence
+in algebraic geometry, and were fundamental to the work cited for [June Huh's fields medal](https://www.mathunion.org/fileadmin/IMU/Prizes/Fields/2022/IMU_Fields22_Huh_citation.pdf).
+
+(One quick remark: the original definition, and most matroids that people study have $E$ finite, 
+but one can generalize the definition to allow for infinite $E$, at the expense of making the definition a little more complicated to avoid mention of set cardinality. 
+We do do this in mathlib, but the added complexity is orthogonal to everything I'll discuss here, so just pretend all matroids are finite for today). 
+
+**Minors**
+
+The main culprit behind the thorny design issue we will encounter is the standard notion of a substructure in matroid theory - a *minor*. 
+If $M = (E, \mathcal{I})$ is a matroid, and $X \subseteq E$, then we can remove the elements of $X$ from $E$
+in two distinct ways. 
+
+The first is the easy one: the *deletion* $M \backslash X$ of $X$ in $M$ is just the
+matroid $(E \setminus X, \mathcal{I}')$, where $\mathcal{I}' = \mathcal{I} \cap 2^X$. This is trivially still a matroid.
+
+The other way we can remove $X$ is by *contracting* it. The contraction $M / X$ is a certain matroid $(E \setminus X, \mathcal{I}')$, 
+which in the linear case corresponds to applying to $E \ X$ the quotient map whose kernel is the span of $X$. 
+Writing down the definition of $\mathcal{I}'$ in the abstract, and showing that it satisfies the matroid axioms,
+is a little fiddly but quite doable - I'll leave it to the motivated reader.
+
+The important thing is that contraction and deletion are two different ways to remove $X$ from a matroid.
+A matroid obtained from $M$ by some combination of contraction and deletions is called a *minor* of $M$.
+So if $C_1, C_2, D_1, D_2$ are pairwise-disjoint subsets of $E$, 
+then $M' = (((M / C_1) \setminus D_1) / C_2) \setminus D_2$ is an example of a minor of $M$.
+But we don't need all the brackets; it turns out that contraction/deletion commute in the sense that
+we also have $M' = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$, and thus every minor has the form $M / C \setminus D$
+for disjoint $C, D \subseteq E$. 
+
+There are two important points here from a formalization perspective. The first is that,
+if $N = (E', \mathcal{I}')$ is a minor of $M = (E, \mathcal{I})$, then $N$ is not determined by
+just by $M$ and $E'$. For instance, we could have got to $N$ by either contracting $E \setminus E'$ or deleting $E \setminus E'$, 
+and those operations would give different $N$. This makes the notion of a minor quite unlike a subgroup/module/graph. 
+
+The second is that the aforementioned fact that $(((M / C_1) \setminus D_1) / C_2) \setminus D_2 = M / (C_1 \cup C_2) \setminus (D_1 \cup D_2)$ 
+is a perfect example of a statement that is hard to formalize. In a type theory framework, we will pay dearly for that $=$ sign. 
+
+**Closure** 
+
+We need one more thing, mathematically. If $M = (E, \mathcal{I})$ is a matroid and $I \in \mathcal{I}$,
+then the *closure* of $I$ in $M$ is the set $\mathrm{cl}_M(I)$ of all $e \in E$ such that either $e \in I$ or $I \cup \{e\} \notin \mathcal{I}$.
+If the matroid is linear, then $\mathrm{cl}_M(I)$ is simply the intersection of $E$ with the linear span of $I$.
+In this spirit, we can define $\mathrm{cl}_M(X)$ even in $X \not\subseteq I$, but I omit the definition here.
+
+Closure lives up to its name in that it is idempotent, inflationary and monotone; 
+that is, we have $\mathrm{cl}_M(\mathrm{cl}_M(X)) = $\mathrm{cl}_M(X)$ and 
+$X \subseteq \mathrm{cl}_M(X) \subseteq \mathrm{cl}_M(Y)$ for all $X \subseteq Y \subseteq E$.
+
+
+
+
 
 
 
